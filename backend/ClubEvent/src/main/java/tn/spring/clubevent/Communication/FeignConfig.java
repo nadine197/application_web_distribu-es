@@ -1,6 +1,5 @@
-package tn.spring.course.Config;
+package tn.spring.clubevent.Communication;
 
-import feign.Logger;
 import feign.RequestInterceptor;
 import feign.RequestTemplate;
 import jakarta.servlet.http.HttpServletRequest;
@@ -8,17 +7,10 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.web.context.request.RequestContextHolder;
 import org.springframework.web.context.request.ServletRequestAttributes;
 
+/**
+ * Forward the incoming JWT to inter-service Feign calls.
+ */
 public class FeignConfig {
-
-    @Bean
-    public Logger.Level feignLoggerLevel() {
-        return Logger.Level.FULL;
-    }
-
-    @Bean
-    public CustomErrorDecoder errorDecoder() {
-        return new CustomErrorDecoder();
-    }
 
     @Bean
     public RequestInterceptor forwardAuthorizationInterceptor() {

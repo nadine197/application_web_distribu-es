@@ -6,7 +6,9 @@ import org.springframework.web.bind.annotation.PathVariable;
 
 import java.util.Map;
 
-@FeignClient(name = "User")
+import tn.spring.clubevent.Communication.FeignConfig;
+
+@FeignClient(name = "User", configuration = FeignConfig.class)
 public interface UserClient {
 
     @GetMapping("/api/users/{id}")

@@ -30,6 +30,15 @@ public class GatewayJwtFilter extends OncePerRequestFilter {
                                     FilterChain filterChain)
             throws ServletException, IOException {
 
+        String path = request.getRequestURI();
+
+        // Skip JWT validation for public endpoints
+        if (path.startsWith("/api/auth/") || path.equals("/api/packages/active")
+                || path.startsWith("/actuator/")) {
+            filterChain.doFilter(request, response);
+            return;
+        }
+
         String authHeader = request.getHeader("Authorization");
 
         if (authHeader != null && authHeader.startsWith("Bearer ")) {

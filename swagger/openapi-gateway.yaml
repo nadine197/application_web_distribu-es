@@ -1,0 +1,814 @@
+openapi: 3.0.3
+info:
+  title: EnglishForU - API Gateway
+  description: Central entry point for all EnglishForU microservices (port 8090)
+  version: 1.0.0
+servers:
+  - url: http://localhost:8090
+    description: API Gateway
+
+components:
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+  schemas:
+    LoginRequest:
+      type: object
+      properties:
+        login: { type: string, example: admin@esprit.tn }
+        password: { type: string, example: "secret123" }
+        rememberMe: { type: boolean, example: false }
+    RegisterRequest:
+      type: object
+      properties:
+        name: { type: string }
+        lastName: { type: string }
+        email: { type: string }
+        password: { type: string }
+        role: { type: string, enum: [STUDENT, TUTOR] }
+
+security:
+  - BearerAuth: []
+
+tags:
+  - name: Authentication
+  - name: Users
+  - name: Appointments
+  - name: Discussions
+  - name: Courses
+  - name: Packages
+  - name: Payments
+  - name: Promos
+  - name: Clubs
+  - name: Events
+  - name: Quizzes
+  - name: Evaluations
+
+paths:
+  # ── AUTH ────────────────────────────────────────────
+  /api/auth/login:
+    post:
+      tags: [Authentication]
+      summary: User login
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/LoginRequest' }
+      responses:
+        '200':
+          description: JWT token returned
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  token: { type: string }
+                  user:
+                    type: object
+                    properties:
+                      email: { type: string }
+                      role: { type: string }
+
+  /api/auth/register-client:
+    post:
+      tags: [Authentication]
+      summary: Register a new student
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/RegisterRequest' }
+      responses:
+        '200': { description: Registered successfully }
+
+  /api/auth/ForgotPassword:
+    post:
+      tags: [Authentication]
+      summary: Request password reset email
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { type: string, example: user@esprit.tn }
+      responses:
+        '200': { description: Reset email sent }
+
+  /api/auth/logout:
+    post:
+      tags: [Authentication]
+      summary: Logout user
+      responses:
+        '200': { description: Logged out }
+
+  /api/auth/reset-password/confirm:
+    post:
+      tags: [Authentication]
+      summary: Confirm password reset
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                token: { type: string }
+                newPassword: { type: string }
+                confirmPassword: { type: string }
+      responses:
+        '200': { description: Password changed }
+
+  # ── USERS ────────────────────────────────────────────
+  /api/users/students:
+    get:
+      tags: [Users]
+      summary: Get all students (ADMIN)
+      responses:
+        '200': { description: List of students }
+
+  /api/users/tutors:
+    get:
+      tags: [Users]
+      summary: Get all tutors (ADMIN)
+      responses:
+        '200': { description: List of tutors }
+
+  /api/users/admins:
+    get:
+      tags: [Users]
+      summary: Get all admins (ADMIN)
+      responses:
+        '200': { description: List of admins }
+
+  /api/users/{id}:
+    get:
+      tags: [Users]
+      summary: Get user by ID
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        '200': { description: User found }
+    put:
+      tags: [Users]
+      summary: Update user (ADMIN)
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      requestBody:
+        content:
+          application/json:
+            schema: { type: object }
+      responses:
+        '200': { description: Updated }
+
+  /api/users/block/{id}:
+    put:
+      tags: [Users]
+      summary: Block user (ADMIN)
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        '200': { description: User blocked }
+
+  /api/users/unblock/{id}:
+    put:
+      tags: [Users]
+      summary: Unblock user (ADMIN)
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        '200': { description: User unblocked }
+
+  # ── APPOINTMENTS ────────────────────────────────────
+  /api/appointments/available-slots:
+    get:
+      tags: [Appointments]
+      summary: Get available appointment slots
+      responses:
+        '200': { description: List of slots }
+
+  /api/appointments/book:
+    post:
+      tags: [Appointments]
+      summary: Book an appointment
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { type: object }
+      responses:
+        '200': { description: Appointment booked }
+
+  /api/appointments/all:
+    get:
+      tags: [Appointments]
+      summary: Get all appointments with filters (ADMIN)
+      parameters:
+        - name: page
+          in: query
+          schema: { type: integer, default: 0 }
+        - name: size
+          in: query
+          schema: { type: integer, default: 5 }
+        - name: search
+          in: query
+          schema: { type: string }
+        - name: status
+          in: query
+          schema: { type: string }
+        - name: sort
+          in: query
+          schema: { type: string, default: "appointmentDate,desc" }
+      responses:
+        '200': { description: Paginated appointments }
+
+  /api/appointments/{id}/accept:
+    put:
+      tags: [Appointments]
+      summary: Accept appointment
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        '200': { description: Accepted }
+
+  /api/appointments/{id}/cancel:
+    put:
+      tags: [Appointments]
+      summary: Cancel appointment
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        '200': { description: Cancelled }
+
+  /api/appointments/{id}/reschedule:
+    put:
+      tags: [Appointments]
+      summary: Reschedule appointment
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+        - name: newDate
+          in: query
+          required: true
+          schema: { type: string, format: date-time }
+      responses:
+        '200': { description: Rescheduled }
+
+  # ── DISCUSSIONS ──────────────────────────────────────
+  /api/discussions/groups/all:
+    get:
+      tags: [Discussions]
+      summary: Get all discussion groups (ADMIN)
+      responses:
+        '200': { description: List of groups }
+
+  /api/discussions/groups/user/{email}:
+    get:
+      tags: [Discussions]
+      summary: Get discussion groups by user email
+      parameters:
+        - name: email
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        '200': { description: User groups }
+
+  /api/discussions/groups:
+    post:
+      tags: [Discussions]
+      summary: Create discussion group
+      requestBody:
+        content:
+          application/json:
+            schema: { type: object }
+      responses:
+        '200': { description: Group created }
+
+  /api/discussions/groups/{groupId}/messages:
+    get:
+      tags: [Discussions]
+      summary: Get message history for a group
+      parameters:
+        - name: groupId
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        '200': { description: Message list }
+
+  # ── PACKAGES ────────────────────────────────────────
+  /api/packages/active:
+    get:
+      tags: [Packages]
+      summary: Get active packages (public)
+      security: []
+      responses:
+        '200': { description: Active packages }
+
+  /api/packages:
+    get:
+      tags: [Packages]
+      summary: Get all packages (ADMIN)
+      responses:
+        '200': { description: All packages }
+    post:
+      tags: [Packages]
+      summary: Create package (ADMIN)
+      requestBody:
+        content:
+          application/json:
+            schema: { type: object }
+      responses:
+        '201': { description: Created }
+
+  /api/packages/{id}:
+    get:
+      tags: [Packages]
+      summary: Get package by ID
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer }
+      responses:
+        '200': { description: Package found }
+    put:
+      tags: [Packages]
+      summary: Update package (ADMIN)
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer }
+      requestBody:
+        content:
+          application/json:
+            schema: { type: object }
+      responses:
+        '200': { description: Updated }
+
+  # ── PAYMENTS ────────────────────────────────────────
+  /api/payments:
+    post:
+      tags: [Payments]
+      summary: Create payment
+      requestBody:
+        content:
+          application/json:
+            schema: { type: object }
+      responses:
+        '200': { description: Payment created }
+    get:
+      tags: [Payments]
+      summary: List all payments (ADMIN)
+      responses:
+        '200': { description: Payment list }
+
+  /api/payments/{id}/confirm:
+    post:
+      tags: [Payments]
+      summary: Confirm payment
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer }
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                provider: { type: string }
+                providerRef: { type: string }
+      responses:
+        '200': { description: Confirmed }
+
+  /api/payments/{id}/voucher:
+    get:
+      tags: [Payments]
+      summary: Download payment voucher PDF
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer }
+      responses:
+        '200':
+          description: PDF voucher
+          content:
+            application/pdf:
+              schema: { type: string, format: binary }
+
+  # ── PROMOS ──────────────────────────────────────────
+  /api/promos:
+    get:
+      tags: [Promos]
+      summary: Get all promo codes (ADMIN)
+      responses:
+        '200': { description: Promo list }
+    post:
+      tags: [Promos]
+      summary: Create promo code (ADMIN)
+      requestBody:
+        content:
+          application/json:
+            schema: { type: object }
+      responses:
+        '201': { description: Created }
+
+  /api/promos/validate:
+    post:
+      tags: [Promos]
+      summary: Validate a promo code
+      requestBody:
+        content:
+          application/json:
+            schema: { type: object }
+      responses:
+        '200': { description: Validation result }
+
+  # ── CLUBS ───────────────────────────────────────────
+  /api/clubs:
+    get:
+      tags: [Clubs]
+      summary: Get all clubs
+      parameters:
+        - name: userId
+          in: query
+          schema: { type: string }
+      responses:
+        '200': { description: Club list }
+    post:
+      tags: [Clubs]
+      summary: Create a club
+      parameters:
+        - name: userId
+          in: query
+          required: true
+          schema: { type: string }
+        - name: userName
+          in: query
+          required: true
+          schema: { type: string }
+      requestBody:
+        content:
+          application/json:
+            schema: { type: object }
+      responses:
+        '200': { description: Club created }
+
+  /api/clubs/{id}:
+    get:
+      tags: [Clubs]
+      summary: Get club by ID
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer }
+      responses:
+        '200': { description: Club found }
+    put:
+      tags: [Clubs]
+      summary: Update club
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer }
+        - name: userId
+          in: query
+          required: true
+          schema: { type: string }
+      requestBody:
+        content:
+          application/json:
+            schema: { type: object }
+      responses:
+        '200': { description: Updated }
+    delete:
+      tags: [Clubs]
+      summary: Delete club
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer }
+        - name: userId
+          in: query
+          required: true
+          schema: { type: string }
+      responses:
+        '200': { description: Deleted }
+
+  /api/clubs/{id}/join:
+    post:
+      tags: [Clubs]
+      summary: Request to join a club
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer }
+        - name: userId
+          in: query
+          required: true
+          schema: { type: string }
+        - name: userName
+          in: query
+          required: true
+          schema: { type: string }
+      responses:
+        '200': { description: Join request sent }
+
+  # ── EVENTS ──────────────────────────────────────────
+  /api/events:
+    get:
+      tags: [Events]
+      summary: Get all events
+      parameters:
+        - name: userId
+          in: query
+          schema: { type: string }
+      responses:
+        '200': { description: Event list }
+    post:
+      tags: [Events]
+      summary: Create event
+      parameters:
+        - name: userId
+          in: query
+          required: true
+          schema: { type: string }
+      requestBody:
+        content:
+          application/json:
+            schema: { type: object }
+      responses:
+        '200': { description: Event created }
+
+  /api/events/{id}:
+    get:
+      tags: [Events]
+      summary: Get event by ID
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer }
+      responses:
+        '200': { description: Event found }
+    put:
+      tags: [Events]
+      summary: Update event
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer }
+        - name: userId
+          in: query
+          required: true
+          schema: { type: string }
+      requestBody:
+        content:
+          application/json:
+            schema: { type: object }
+      responses:
+        '200': { description: Updated }
+    delete:
+      tags: [Events]
+      summary: Delete event
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer }
+        - name: userId
+          in: query
+          required: true
+          schema: { type: string }
+      responses:
+        '200': { description: Deleted }
+
+  /api/events/{id}/participate:
+    post:
+      tags: [Events]
+      summary: Request participation in event
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer }
+        - name: userId
+          in: query
+          required: true
+          schema: { type: string }
+        - name: userName
+          in: query
+          required: true
+          schema: { type: string }
+      responses:
+        '200': { description: Participation requested }
+
+  # ── QUIZZES ─────────────────────────────────────────
+  /api/quizzes:
+    get:
+      tags: [Quizzes]
+      summary: Get all quizzes
+      responses:
+        '200': { description: Quiz list }
+
+  /api/quizzes/{id}:
+    get:
+      tags: [Quizzes]
+      summary: Get quiz by ID
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer }
+      responses:
+        '200': { description: Quiz found }
+    put:
+      tags: [Quizzes]
+      summary: Update quiz (ADMIN/TUTOR)
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer }
+      requestBody:
+        content:
+          application/json:
+            schema: { type: object }
+      responses:
+        '200': { description: Updated }
+    delete:
+      tags: [Quizzes]
+      summary: Delete quiz (ADMIN/TUTOR)
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer }
+      responses:
+        '200': { description: Deleted }
+
+  /api/quizzes/course/{courseId}:
+    get:
+      tags: [Quizzes]
+      summary: Get quizzes by course
+      parameters:
+        - name: courseId
+          in: path
+          required: true
+          schema: { type: integer }
+      responses:
+        '200': { description: Quizzes for course }
+    post:
+      tags: [Quizzes]
+      summary: Create quiz for course (ADMIN/TUTOR)
+      parameters:
+        - name: courseId
+          in: path
+          required: true
+          schema: { type: integer }
+      requestBody:
+        content:
+          application/json:
+            schema: { type: object }
+      responses:
+        '200': { description: Quiz created }
+
+  /api/quizzes/{id}/questions:
+    get:
+      tags: [Quizzes]
+      summary: Get questions for quiz
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer }
+      responses:
+        '200': { description: Questions list }
+
+  # ── EVALUATIONS ─────────────────────────────────────
+  /api/evaluations:
+    get:
+      tags: [Evaluations]
+      summary: Get evaluations (ADMIN/TUTOR)
+      parameters:
+        - name: studentId
+          in: query
+          schema: { type: string, format: uuid }
+      responses:
+        '200': { description: Evaluation list }
+    post:
+      tags: [Evaluations]
+      summary: Create evaluation (ADMIN/TUTOR)
+      requestBody:
+        content:
+          application/json:
+            schema: { type: object }
+      responses:
+        '200': { description: Created }
+
+  /api/evaluations/mine:
+    get:
+      tags: [Evaluations]
+      summary: Get my evaluations (Student)
+      responses:
+        '200': { description: My evaluations }
+
+  /api/evaluations/motivation-suggestions:
+    post:
+      tags: [Evaluations]
+      summary: Get AI motivation suggestions (public)
+      security: []
+      requestBody:
+        content:
+          application/json:
+            schema: { type: object }
+      responses:
+        '200': { description: Suggestions }
+
+  # ── COURSES ─────────────────────────────────────────
+  /api/courses:
+    get:
+      tags: [Courses]
+      summary: Get all courses
+      responses:
+        '200': { description: Course list }
+    post:
+      tags: [Courses]
+      summary: Create course (ADMIN)
+      requestBody:
+        content:
+          application/json:
+            schema: { type: object }
+      responses:
+        '200': { description: Created }
+
+  /api/courses/{id}:
+    get:
+      tags: [Courses]
+      summary: Get course by ID
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer }
+      responses:
+        '200': { description: Course found }
+    put:
+      tags: [Courses]
+      summary: Update course (ADMIN)
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer }
+      requestBody:
+        content:
+          application/json:
+            schema: { type: object }
+      responses:
+        '200': { description: Updated }
+    delete:
+      tags: [Courses]
+      summary: Delete course (ADMIN)
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer }
+      responses:
+        '200': { description: Deleted }

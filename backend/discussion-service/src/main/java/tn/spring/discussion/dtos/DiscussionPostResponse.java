@@ -19,6 +19,7 @@ public class DiscussionPostResponse {
     private String quizPayload;
 
     private String authorEmail;
+    private String authorName;
     private String authorRole;
     private String authorLevel;
 

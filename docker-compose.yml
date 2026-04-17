@@ -1,7 +1,7 @@
 version: "3.9"
 
 # ─────────────────────────────────────────────────────────────────
-#  Shared environment fragments
+#  Shared fragments
 # ─────────────────────────────────────────────────────────────────
 x-eureka-env: &eureka-env
   EUREKA_CLIENT_SERVICEURL_DEFAULTZONE: http://eureka-server:8761/eureka/
@@ -10,12 +10,70 @@ x-eureka-env: &eureka-env
 x-java-opts: &java-opts
   JAVA_OPTS: "-XX:+UseContainerSupport -XX:MaxRAMPercentage=75.0 -Djava.security.egd=file:/dev/./urandom"
 
+x-db-env: &db-env
+  SPRING_DATASOURCE_USERNAME: postgres
+  SPRING_DATASOURCE_PASSWORD: nadine
+
+x-config-env: &config-env
+  SPRING_CONFIG_IMPORT: "optional:configserver:http://config-server:8888"
+  SPRING_CLOUD_CONFIG_URI: "http://config-server:8888"
+  SPRING_PROFILES_ACTIVE: docker
+
 # ─────────────────────────────────────────────────────────────────
 #  Services
 # ─────────────────────────────────────────────────────────────────
 services:
 
-  # ── Eureka Service Registry ──────────────────────────────────
+  # ════════════════════════════════════════════════════════════════
+  #  INFRASTRUCTURE
+  # ════════════════════════════════════════════════════════════════
+
+  # ── PostgreSQL (single instance, multiple databases) ──────────
+  postgres:
+    image: postgres:16-alpine
+    container_name: postgres
+    restart: unless-stopped
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: nadine
+      POSTGRES_DB: postgres
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+      - ./backend/init-databases.sql:/docker-entrypoint-initdb.d/init.sql
+    networks:
+      - microservices-net
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
+
+  # ── Config Server ─────────────────────────────────────────────
+  config-server:
+    build:
+      context: ./backend/config-server
+      dockerfile: Dockerfile
+    image: ${REGISTRY:-local}/config-server:${TAG:-latest}
+    container_name: config-server
+    restart: unless-stopped
+    ports:
+      - "8888:8888"
+    environment:
+      <<: *java-opts
+      SPRING_PROFILES_ACTIVE: native
+    networks:
+      - microservices-net
+    healthcheck:
+      test: ["CMD-SHELL", "wget --no-verbose --tries=1 --spider http://localhost:8888/actuator/health || exit 1"]
+      interval: 15s
+      timeout: 10s
+      retries: 5
+      start_period: 45s
+
+  # ── Eureka Service Registry ────────────────────────────────────
   eureka-server:
     build:
       context: ./backend/eureka-server
@@ -26,8 +84,10 @@ services:
     ports:
       - "8761:8761"
     environment:
-      <<: *java-opts
-      SPRING_PROFILES_ACTIVE: docker
+      <<: [*java-opts, *config-env]
+    depends_on:
+      config-server:
+        condition: service_healthy
     networks:
       - microservices-net
     healthcheck:
@@ -37,7 +97,11 @@ services:
       retries: 5
       start_period: 60s
 
-  # ── API Gateway ──────────────────────────────────────────────
+  # ════════════════════════════════════════════════════════════════
+  #  BACKEND MICROSERVICES
+  # ════════════════════════════════════════════════════════════════
+
+  # ── API Gateway ────────────────────────────────────────────────
   gateway:
     build:
       context: ./backend/Gateway
@@ -48,8 +112,7 @@ services:
     ports:
       - "8090:8090"
     environment:
-      <<: [*eureka-env, *java-opts]
-      SPRING_PROFILES_ACTIVE: docker
+      <<: [*eureka-env, *java-opts, *config-env]
     depends_on:
       eureka-server:
         condition: service_healthy
@@ -61,7 +124,8 @@ services:
       timeout: 10s
       retries: 5
       start_period: 90s
-  # ── user Service ──────────────────────────────────────
+
+  # ── User Service ───────────────────────────────────────────────
   user-service:
     build:
       context: ./backend/user-management
@@ -72,13 +136,11 @@ services:
     ports:
       - "8081:8081"
     environment:
-      <<: [*eureka-env, *java-opts]
-      SPRING_PROFILES_ACTIVE: docker
-      # TODO: set your DB env vars here, e.g.:
-      # SPRING_DATASOURCE_URL: jdbc:mysql://mysql:3306/user_db
-      # SPRING_DATASOURCE_USERNAME: ${DB_USER}
-      # SPRING_DATASOURCE_PASSWORD: ${DB_PASSWORD}
+      <<: [*eureka-env, *java-opts, *db-env, *config-env]
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/GestionUserPI
     depends_on:
+      postgres:
+        condition: service_healthy
       eureka-server:
         condition: service_healthy
     networks:
@@ -89,7 +151,8 @@ services:
       timeout: 10s
       retries: 5
       start_period: 90s
-  # ── Appointment Service ──────────────────────────────────────
+
+  # ── Appointment Service ────────────────────────────────────────
   appointment-service:
     build:
       context: ./backend/Appointment
@@ -100,13 +163,11 @@ services:
     ports:
       - "8087:8087"
     environment:
-      <<: [*eureka-env, *java-opts]
-      SPRING_PROFILES_ACTIVE: docker
-      # TODO: set your DB env vars here, e.g.:
-      # SPRING_DATASOURCE_URL: jdbc:mysql://mysql:3306/appointment_db
-      # SPRING_DATASOURCE_USERNAME: ${DB_USER}
-      # SPRING_DATASOURCE_PASSWORD: ${DB_PASSWORD}
+      <<: [*eureka-env, *java-opts, *db-env, *config-env]
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/AppointmentPI
     depends_on:
+      postgres:
+        condition: service_healthy
       eureka-server:
         condition: service_healthy
     networks:
@@ -118,7 +179,7 @@ services:
       retries: 5
       start_period: 90s
 
-  # ── Club Service ─────────────────────────────────────────────
+  # ── ClubEvent Service ──────────────────────────────────────────
   club-service:
     build:
       context: ./backend/ClubEvent
@@ -129,9 +190,11 @@ services:
     ports:
       - "8083:8083"
     environment:
-      <<: [*eureka-env, *java-opts]
-      SPRING_PROFILES_ACTIVE: docker
+      <<: [*eureka-env, *java-opts, *db-env, *config-env]
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/ClubEventPI
     depends_on:
+      postgres:
+        condition: service_healthy
       eureka-server:
         condition: service_healthy
     networks:
@@ -143,7 +206,7 @@ services:
       retries: 5
       start_period: 90s
 
-  # ── Course Service ───────────────────────────────────────────
+  # ── Course Service ─────────────────────────────────────────────
   course-service:
     build:
       context: ./backend/course-service
@@ -154,9 +217,14 @@ services:
     ports:
       - "8084:8084"
     environment:
-      <<: [*eureka-env, *java-opts]
-      SPRING_PROFILES_ACTIVE: docker
+      <<: [*eureka-env, *java-opts, *db-env, *config-env]
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/CoursePI
+      DB_URL: jdbc:postgresql://postgres:5432/CoursePI
+      DB_USERNAME: postgres
+      DB_PASSWORD: nadine
     depends_on:
+      postgres:
+        condition: service_healthy
       eureka-server:
         condition: service_healthy
     networks:
@@ -168,7 +236,7 @@ services:
       retries: 5
       start_period: 90s
 
-  # ── Discussion Service ───────────────────────────────────────
+  # ── Discussion Service ─────────────────────────────────────────
   discussion-service:
     build:
       context: ./backend/discussion-service
@@ -179,9 +247,11 @@ services:
     ports:
       - "8088:8088"
     environment:
-      <<: [*eureka-env, *java-opts]
-      SPRING_PROFILES_ACTIVE: docker
+      <<: [*eureka-env, *java-opts, *db-env, *config-env]
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/DiscussionPI
     depends_on:
+      postgres:
+        condition: service_healthy
       eureka-server:
         condition: service_healthy
     networks:
@@ -193,7 +263,7 @@ services:
       retries: 5
       start_period: 120s
 
-  # ── Package Service ──────────────────────────────────────────
+  # ── Package Service ────────────────────────────────────────────
   package-service:
     build:
       context: ./backend/package_service
@@ -204,9 +274,11 @@ services:
     ports:
       - "8085:8085"
     environment:
-      <<: [*eureka-env, *java-opts]
-      SPRING_PROFILES_ACTIVE: docker
+      <<: [*eureka-env, *java-opts, *db-env, *config-env]
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/GestionPackagePI
     depends_on:
+      postgres:
+        condition: service_healthy
       eureka-server:
         condition: service_healthy
     networks:
@@ -218,7 +290,7 @@ services:
       retries: 5
       start_period: 90s
 
-  # ── Quiz Service ─────────────────────────────────────────────
+  # ── Quiz Service ───────────────────────────────────────────────
   quiz-service:
     build:
       context: ./backend/Quiz
@@ -229,9 +301,14 @@ services:
     ports:
       - "8056:8056"
     environment:
-      <<: [*eureka-env, *java-opts]
-      SPRING_PROFILES_ACTIVE: docker
+      <<: [*eureka-env, *java-opts, *db-env, *config-env]
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/QuizPI
+      SPRING_DATASOURCE_URL_ALT: jdbc:postgresql://postgres:5432/QuizPI
+      SPRING_DATASOURCE_USERNAME: postgres
+      SPRING_DATASOURCE_PASSWORD: nadine
     depends_on:
+      postgres:
+        condition: service_healthy
       eureka-server:
         condition: service_healthy
     networks:
@@ -243,7 +320,41 @@ services:
       retries: 5
       start_period: 90s
 
-  # ── Frontend ─────────────────────────────────────────────────
+  # ── Recommendation Service (Python/FastAPI) ────────────────────
+  recommendation-service:
+    build:
+      context: ./backend/recommendation-service
+      dockerfile: Dockerfile
+    image: ${REGISTRY:-local}/recommendation-service:${TAG:-latest}
+    container_name: recommendation-service
+    restart: unless-stopped
+    ports:
+      - "8091:8091"
+    environment:
+      SERVER_PORT: "8091"
+      SERVICE_HOST: "recommendation-service"
+      EUREKA_URL: "http://eureka-server:8761/eureka"
+      COURSE_SERVICE_URL: "http://course-service:8084"
+      USER_SERVICE_URL: "http://user-service:8081"
+      QUIZ_SERVICE_URL: "http://quiz-service:8056"
+      JWT_SECRET: "7c1015921c5d90739574de77e2c5bb7661a555f493e0c2b0ca47f550b938368bd7e839ba6ff0dc617716913dfaf61c7bd87b57f3920241f008cd54fb6c7918fa"
+    depends_on:
+      eureka-server:
+        condition: service_healthy
+    networks:
+      - microservices-net
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8091/actuator/health')"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+
+  # ════════════════════════════════════════════════════════════════
+  #  FRONTEND & TOOLS
+  # ════════════════════════════════════════════════════════════════
+
+  # ── Frontend (Angular) ─────────────────────────────────────────
   frontend:
     build:
       context: ./frontend
@@ -265,9 +376,30 @@ services:
       retries: 3
       start_period: 30s
 
+  # ── Swagger UI ─────────────────────────────────────────────────
+  swagger-ui:
+    build:
+      context: ./swagger
+      dockerfile: Dockerfile
+    image: ${REGISTRY:-local}/swagger-ui:${TAG:-latest}
+    container_name: swagger-ui
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+    environment:
+      SWAGGER_JSON_URL: /specs/openapi-gateway.yaml
+      BASE_URL: /
+      VALIDATOR_URL: "none"
+    networks:
+      - microservices-net
+
 # ─────────────────────────────────────────────────────────────────
-#  Networks
+#  Volumes & Networks
 # ─────────────────────────────────────────────────────────────────
+volumes:
+  postgres-data:
+    name: englishforu-postgres-data
+
 networks:
   microservices-net:
     driver: bridge

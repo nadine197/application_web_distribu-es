@@ -3,6 +3,7 @@ package tn.spring.clubevent.Services;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import tn.spring.clubevent.Communication.UserClient;
 import tn.spring.clubevent.Enums.RequestStatus;
 import tn.spring.clubevent.Models.Club;
 import tn.spring.clubevent.Models.ClubMembership;
@@ -22,6 +23,7 @@ public class ClubService {
     private final ClubRepository clubRepository;
     private final ClubMembershipRepository membershipRepository;
     private final EventRepository eventRepository;
+    private final UserClient userClient;
 
     public List<Map<String, Object>> getAllClubs(String currentUserId) {
         List<Club> clubs = clubRepository.findAll();
@@ -81,10 +83,21 @@ public class ClubService {
         if (membershipRepository.findByClubIdAndUserId(clubId, userId).isPresent()) {
             throw new RuntimeException("Already requested or member");
         }
+        // Resolve real user name from User service
+        String resolvedName = userName;
+        try {
+            Map<String, Object> user = userClient.getUserById(userId);
+            if (user != null) {
+                String name = (String) user.get("name");
+                String lastName = (String) user.get("lastName");
+                if (name != null) resolvedName = lastName != null ? name + " " + lastName : name;
+            }
+        } catch (Exception ignored) { /* fallback to passed userName */ }
+
         ClubMembership membership = ClubMembership.builder()
                 .clubId(clubId)
                 .userId(userId)
-                .userName(userName)
+                .userName(resolvedName)
                 .status(RequestStatus.PENDING)
                 .build();
         return membershipRepository.save(membership);
@@ -130,6 +143,13 @@ public class ClubService {
         map.put("imageUrl", club.getImageUrl());
         map.put("presidentId", club.getPresidentId());
         map.put("presidentName", club.getPresidentName());
+        // Enrich with president details from User service
+        try {
+            Map<String, Object> president = userClient.getUserById(club.getPresidentId());
+            if (president != null) {
+                map.put("presidentEmail", president.get("email"));
+            }
+        } catch (Exception ignored) { /* User service unavailable */ }
         map.put("createdAt", club.getCreatedAt());
         map.put("memberCount", membershipRepository.countByClubIdAndStatus(club.getId(), RequestStatus.ACCEPTED));
         map.put("eventCount", eventRepository.findByClubId(club.getId()).size());

@@ -23,6 +23,8 @@ import tn.spring.discussion.enums.DiscussionScope;
 import tn.spring.discussion.models.DiscussionComment;
 import tn.spring.discussion.models.DiscussionPost;
 import tn.spring.discussion.models.DiscussionReaction;
+import tn.spring.discussion.clients.UserFeignClient;
+import tn.spring.discussion.clients.dto.UserPublicDTO;
 import tn.spring.discussion.repositories.DiscussionCommentRepository;
 import tn.spring.discussion.repositories.DiscussionPostRepository;
 import tn.spring.discussion.repositories.DiscussionReactionRepository;
@@ -49,6 +51,7 @@ public class DiscussionService {
     private final DiscussionCommentRepository commentRepository;
     private final DiscussionReactionRepository reactionRepository;
     private final JwtUserContextResolver jwtUserContextResolver;
+    private final UserFeignClient userFeignClient;
 
     @Value("${discussion.storage.path:uploads/discussions}")
     private String storagePath;
@@ -301,6 +304,7 @@ public class DiscussionService {
                 .imagePath(post.getImagePath())
                 .quizPayload(post.getQuizPayload())
                 .authorEmail(post.getAuthorEmail())
+                .authorName(resolveAuthorName(post.getAuthorEmail()))
                 .authorRole(post.getAuthorRole())
                 .authorLevel(post.getAuthorLevel())
                 .targetRole(post.getTargetRole())
@@ -320,6 +324,7 @@ public class DiscussionService {
                 .id(comment.getId())
                 .postId(comment.getPost().getId())
                 .authorEmail(comment.getAuthorEmail())
+                .authorName(resolveAuthorName(comment.getAuthorEmail()))
                 .message(comment.getMessage())
                 .createdAt(comment.getCreatedAt())
                 .build();
@@ -330,9 +335,27 @@ public class DiscussionService {
                 .id(reaction.getId())
                 .postId(reaction.getPost().getId())
                 .authorEmail(reaction.getAuthorEmail())
+                .authorName(resolveAuthorName(reaction.getAuthorEmail()))
                 .type(reaction.getType())
                 .createdAt(reaction.getCreatedAt())
                 .build();
+    }
+
+    /**
+     * Fetch the display name from User service via Feign.
+     * Returns "email" as fallback if User service is unreachable.
+     */
+    private String resolveAuthorName(String email) {
+        try {
+            UserPublicDTO user = userFeignClient.getPublicByEmail(email);
+            if (user != null && user.getName() != null) {
+                String lastName = user.getLastName() != null ? " " + user.getLastName() : "";
+                return user.getName() + lastName;
+            }
+        } catch (Exception ignored) {
+            // User service unreachable — degrade gracefully
+        }
+        return email;
     }
 
     private String nullableTrim(String value) {

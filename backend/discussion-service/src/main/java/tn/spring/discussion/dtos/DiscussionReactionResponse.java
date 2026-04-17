@@ -12,6 +12,7 @@ public class DiscussionReactionResponse {
     private Long id;
     private Long postId;
     private String authorEmail;
+    private String authorName;
     private DiscussionReactionType type;
     private Instant createdAt;
 }

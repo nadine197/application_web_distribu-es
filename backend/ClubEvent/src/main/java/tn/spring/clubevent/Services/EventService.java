@@ -3,6 +3,7 @@ package tn.spring.clubevent.Services;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import tn.spring.clubevent.Communication.UserClient;
 import tn.spring.clubevent.Enums.RequestStatus;
 import tn.spring.clubevent.Models.Club;
 import tn.spring.clubevent.Models.Event;
@@ -23,6 +24,7 @@ public class EventService {
     private final EventRepository eventRepository;
     private final EventParticipationRepository participationRepository;
     private final ClubRepository clubRepository;
+    private final UserClient userClient;
 
     public List<Map<String, Object>> getAllEvents(String currentUserId) {
         List<Event> events = eventRepository.findAll();
@@ -99,10 +101,21 @@ public class EventService {
                 throw new RuntimeException("Event is full. No more spots available.");
             }
         }
+        // Resolve real user name from User service
+        String resolvedName = userName;
+        try {
+            Map<String, Object> user = userClient.getUserById(userId);
+            if (user != null) {
+                String name = (String) user.get("name");
+                String lastName = (String) user.get("lastName");
+                if (name != null) resolvedName = lastName != null ? name + " " + lastName : name;
+            }
+        } catch (Exception ignored) { /* fallback to passed userName */ }
+
         EventParticipation participation = EventParticipation.builder()
                 .eventId(eventId)
                 .userId(userId)
-                .userName(userName)
+                .userName(resolvedName)
                 .status(RequestStatus.PENDING)
                 .build();
         return participationRepository.save(participation);

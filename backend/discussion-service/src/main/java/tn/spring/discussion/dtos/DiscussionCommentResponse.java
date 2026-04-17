@@ -11,6 +11,7 @@ public class DiscussionCommentResponse {
     private Long id;
     private Long postId;
     private String authorEmail;
+    private String authorName;
     private String message;
     private Instant createdAt;
 }
